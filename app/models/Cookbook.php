@@ -20,15 +20,17 @@ class Cookbook {
             'title' => $data['title'],
             'description' => $data['description'] ?? null,
             'cover_image_url' => $data['cover_image_url'] ?? null,
-            'is_public' => $data['is_public'] ?? false,
+            'is_public' => $data['is_public'] ?? true,
         ]);
     }
 
     public function findById($id) {
         $cookbook = $this->db->selectOne('cookbooks', '*', 'id = ?', [$id]);
+        
         if ($cookbook) {
             $cookbook['recipes'] = $this->getRecipes($id);
         }
+
         return $cookbook;
     }
 
@@ -42,6 +44,14 @@ class Cookbook {
         return $this->db->query($sql, [$limit, $offset])->fetchAll();
     }
 
+    public function getRecipes($cookbookId) {
+        $sql = "SELECT r.* FROM recipes r
+                JOIN cookbook_recipes cr ON r.id = cr.recipe_id
+                WHERE cr.cookbook_id = ?
+                ORDER BY cr.added_at DESC";
+        return $this->db->query($sql, [$cookbookId])->fetchAll();
+    }
+
     public function addRecipe($cookbookId, $recipeId) {
         return $this->db->insert('cookbook_recipes', [
             'cookbook_id' => $cookbookId,
@@ -50,18 +60,8 @@ class Cookbook {
     }
 
     public function removeRecipe($cookbookId, $recipeId) {
-        return $this->db->delete('cookbook_recipes', 
-            'cookbook_id = ? AND recipe_id = ?', 
-            [$cookbookId, $recipeId]
-        );
-    }
-
-    public function getRecipes($cookbookId) {
-        $sql = "SELECT r.* FROM recipes r 
-                JOIN cookbook_recipes cr ON r.id = cr.recipe_id 
-                WHERE cr.cookbook_id = ? 
-                ORDER BY cr.added_at DESC";
-        return $this->db->query($sql, [$cookbookId])->fetchAll();
+        return $this->db->delete('cookbook_recipes',
+            'cookbook_id = ? AND recipe_id = ?', [$cookbookId, $recipeId]);
     }
 
     public function update($id, $data) {
@@ -69,6 +69,7 @@ class Cookbook {
     }
 
     public function delete($id) {
+        $this->db->delete('cookbook_recipes', 'cookbook_id = ?', [$id]);
         return $this->db->delete('cookbooks', 'id = ?', [$id]);
     }
 }
