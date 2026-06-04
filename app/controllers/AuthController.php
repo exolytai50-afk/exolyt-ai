@@ -1,12 +1,14 @@
 <?php
 /**
- * Auth Controller - Handle authentication
+ * Update Auth Controller with proper implementation
  */
 
 namespace App\Controllers;
 
 use App\Models\User;
 use App\Database\Database;
+use App\Helpers\AuthHelper;
+use App\Helpers\ResponseHelper;
 
 class AuthController {
     private $userModel;
@@ -26,28 +28,29 @@ class AuthController {
 
         $input = json_decode(file_get_contents('php://input'), true);
 
-        if (!$input || !isset($input['username'], $input['email'], $input['password'])) {
+        if (!isset($input['username'], $input['email'], $input['password'])) {
             http_response_code(400);
             echo json_encode(['error' => 'Missing required fields']);
             return;
         }
 
+        // Check if user exists
         if ($this->userModel->findByEmail($input['email'])) {
-            http_response_code(409);
+            http_response_code(400);
             echo json_encode(['error' => 'Email already exists']);
             return;
         }
 
         if ($this->userModel->findByUsername($input['username'])) {
-            http_response_code(409);
+            http_response_code(400);
             echo json_encode(['error' => 'Username already exists']);
             return;
         }
 
         try {
-            $this->userModel->create($input);
+            $userId = $this->userModel->create($input);
             http_response_code(201);
-            echo json_encode(['message' => 'User registered successfully']);
+            echo json_encode(['message' => 'Registration successful', 'user_id' => $userId]);
         } catch (\Exception $e) {
             http_response_code(500);
             echo json_encode(['error' => 'Registration failed']);
@@ -63,46 +66,40 @@ class AuthController {
 
         $input = json_decode(file_get_contents('php://input'), true);
 
-        if (!$input || !isset($input['email'], $input['password'])) {
+        if (!isset($input['email'], $input['password'])) {
             http_response_code(400);
             echo json_encode(['error' => 'Missing email or password']);
             return;
         }
 
-        if (!$this->userModel->verifyPassword($input['email'], $input['password'])) {
+        if ($this->userModel->verifyPassword($input['email'], $input['password'])) {
+            $user = $this->userModel->findByEmail($input['email']);
+            unset($user['password_hash']);
+            
+            AuthHelper::login($user);
+            
+            echo json_encode(['message' => 'Login successful', 'user' => $user]);
+        } else {
             http_response_code(401);
             echo json_encode(['error' => 'Invalid credentials']);
-            return;
         }
-
-        $user = $this->userModel->findByEmail($input['email']);
-        $_SESSION['user_id'] = $user['id'];
-        $_SESSION['username'] = $user['username'];
-
-        http_response_code(200);
-        echo json_encode([
-            'message' => 'Login successful',
-            'user' => [
-                'id' => $user['id'],
-                'username' => $user['username'],
-                'email' => $user['email'],
-            ]
-        ]);
     }
 
     public function logout() {
-        session_destroy();
-        echo json_encode(['message' => 'Logged out successfully']);
+        AuthHelper::logout();
+        echo json_encode(['message' => 'Logout successful']);
     }
 
     public function me() {
-        if (!isset($_SESSION['user_id'])) {
+        if (!AuthHelper::isAuthenticated()) {
             http_response_code(401);
             echo json_encode(['error' => 'Not authenticated']);
             return;
         }
 
-        $user = $this->userModel->findById($_SESSION['user_id']);
+        $user = $this->userModel->findById(AuthHelper::getCurrentUserId());
+        unset($user['password_hash']);
+        
         echo json_encode($user);
     }
 }

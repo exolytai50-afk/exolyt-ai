@@ -1,13 +1,17 @@
 <?php
 /**
- * Router - Simple URL routing system
+ * Router Class - Handle routing
  */
 
 namespace App\Core;
 
 class Router {
-    private $routes = [];
-    private $notFoundHandler;
+    private $routes = [
+        'GET' => [],
+        'POST' => [],
+        'PUT' => [],
+        'DELETE' => [],
+    ];
 
     public function get($path, $handler) {
         $this->addRoute('GET', $path, $handler);
@@ -26,58 +30,45 @@ class Router {
     }
 
     private function addRoute($method, $path, $handler) {
-        $this->routes[] = [
-            'method' => $method,
-            'path' => $path,
-            'handler' => $handler,
-        ];
+        $this->routes[$method][$path] = $handler;
     }
 
     public function dispatch($method, $uri) {
         // Remove query string
         $uri = parse_url($uri, PHP_URL_PATH);
-        $uri = str_replace('/index.php', '', $uri);
+        $uri = trim($uri, '/');
 
-        foreach ($this->routes as $route) {
-            if ($route['method'] !== $method) continue;
-
-            $pattern = $this->pathToRegex($route['path']);
-            if (preg_match($pattern, $uri, $matches)) {
-                array_shift($matches);
-                return $this->executeHandler($route['handler'], $matches);
+        // Try to match route
+        foreach ($this->routes[$method] as $pattern => $handler) {
+            $pattern = trim($pattern, '/');
+            
+            // Convert pattern to regex
+            $regex = preg_replace('/\{(\w+)\}/', '(?P<$1>\d+)', $pattern);
+            $regex = str_replace('/', '\\/', $regex);
+            
+            if (preg_match("/^$regex$/", $uri, $matches)) {
+                // Call handler
+                if (is_array($handler)) {
+                    $className = $handler[0];
+                    $methodName = $handler[1];
+                    
+                    $class = new $className();
+                    
+                    // Extract ID parameters
+                    $params = array_filter($matches, 'is_string', ARRAY_FILTER_USE_KEY);
+                    
+                    if (!empty($params)) {
+                        call_user_func_array([$class, $methodName], $params);
+                    } else {
+                        $class->$methodName();
+                    }
+                }
+                return;
             }
         }
 
-        return $this->notFound();
-    }
-
-    private function pathToRegex($path) {
-        $path = preg_replace_callback(
-            '/{(\w+)}/',
-            function($matches) {
-                return '(?P<' . $matches[1] . '>[^/]+)';
-            },
-            $path
-        );
-        return '#^' . $path . '$#';
-    }
-
-    private function executeHandler($handler, $params) {
-        if (is_callable($handler)) {
-            return call_user_func_array($handler, $params);
-        }
-
-        if (is_array($handler) && count($handler) === 2) {
-            [$controllerClass, $method] = $handler;
-            $controller = new $controllerClass();
-            return call_user_func_array([$controller, $method], $params);
-        }
-
-        throw new \Exception('Invalid route handler');
-    }
-
-    public function notFound() {
+        // Route not found
         http_response_code(404);
-        echo json_encode(['error' => 'Not Found']);
+        echo json_encode(['error' => 'Route not found']);
     }
 }
