@@ -13,7 +13,7 @@ function current_user(): ?array
     if ($cached !== null) return $cached;
 
     $cached = db_one(
-        'SELECT id, email, name, avatar_url, created_at FROM users WHERE id = ?',
+        'SELECT id, email, display_name as name, avatar_emoji, bio, created_at FROM users WHERE id = ?',
         [$_SESSION['user_id']]
     );
     return $cached;
@@ -46,7 +46,7 @@ function auth_register(string $email, string $password, string $name): array
     }
 
     $id = db_insert(
-        'INSERT INTO users (email, password_hash, name) VALUES (?, ?, ?)',
+        'INSERT INTO users (email, password_hash, display_name) VALUES (?, ?, ?)',
         [$email, password_hash($password, PASSWORD_DEFAULT), $name ?: 'Кулинар']
     );
     db_exec('INSERT INTO user_stats (user_id) VALUES (?)', [$id]);
